@@ -6,13 +6,9 @@ local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
--- KEEP TRACK OF CURRENT MOUSE FOR THE CURSOR FEATURE
 local Mouse = LocalPlayer:GetMouse()
-
--- KEEP TRACK OF CAMERA FOR FLY DIRECTION
 local Camera = workspace.CurrentCamera
 
--- KILLSWITCH SETUP
 local Active = true
 local AllConnections = {}
 
@@ -47,37 +43,78 @@ local HotkeyKey = Enum.KeyCode[saved.HotkeyKey or "RightShift"]
 local WaitingForKey = false
 local XrayKey = Enum.KeyCode[saved.XrayKey or "X"]
 local WaitingForXrayKey = false
+
+-- CURSOR SETTINGS
 local CustomCursorID = saved.CustomCursorID or ""
 local CustomCursorSize = saved.CustomCursorSize or 32
+local CursorSpinEnabled = saved.CursorSpinEnabled == true
+local CursorSpinSpeed = saved.CursorSpinSpeed or 15
+local CursorAngleEnabled = saved.CursorAngleEnabled == true
+local CursorAngle = saved.CursorAngle or 0
+
+-- ESP COLOR & TRANSPARENCY SETTINGS
+local InnocentHue = saved.InnocentHue or 120 
+local MurdererHue = saved.MurdererHue or 0   
+local SheriffHue  = saved.SheriffHue  or 240 
+local GunHue      = saved.GunHue      or 180 
+local EspFillTransparency = saved.EspFillTransparency or 100 
+local GunEspFillTransparency = saved.GunEspFillTransparency or 70 
 
 -- TOGGLES
 local ChamsESPEnabled = saved.ChamsESPEnabled ~= false
 local RoleESPEnabled  = saved.RoleESPEnabled  ~= false
 local GunESPEnabled   = saved.GunESPEnabled   ~= false
+local GunTextESPEnabled = saved.GunTextESPEnabled ~= false
 local XrayEnabled     = saved.XrayEnabled     == true
 local NoclipEnabled   = saved.NoclipEnabled   == true
 local FlyEnabled      = saved.FlyEnabled      == true
+local AntiFlingEnabled = saved.AntiFlingEnabled == true
+local InfiniteZoomEnabled = saved.InfiniteZoomEnabled == true
 
--- CHARACTER
+-- CHARACTER & MISC STATS
 local PlayerSpeed = saved.PlayerSpeed or 16
 local PlayerJump  = saved.PlayerJump  or 50
 local FlySpeed    = saved.FlySpeed    or 50
+local PlayerSpinSpeed = saved.PlayerSpinSpeed or 0
+local PlayerFOV   = saved.PlayerFOV   or 70
+local MaxZoomDist = saved.MaxZoomDist or 400
+local FpsCap      = saved.FpsCap      or 60
 
 local function SaveAllSettings()
 	safeWriteSettings({
-		HotkeyKey      = HotkeyKey.Name,
-		XrayKey        = XrayKey.Name,
-		ChamsESPEnabled = ChamsESPEnabled,
-		RoleESPEnabled  = RoleESPEnabled,
-		GunESPEnabled   = GunESPEnabled,
-		XrayEnabled     = XrayEnabled,
-		NoclipEnabled   = NoclipEnabled,
-		FlyEnabled      = FlyEnabled,
-		PlayerSpeed     = PlayerSpeed,
-		PlayerJump      = PlayerJump,
-		FlySpeed        = FlySpeed,
-		CustomCursorID  = CustomCursorID,
+		HotkeyKey        = HotkeyKey.Name,
+		XrayKey          = XrayKey.Name,
+		ChamsESPEnabled  = ChamsESPEnabled,
+		RoleESPEnabled   = RoleESPEnabled,
+		GunESPEnabled    = GunESPEnabled,
+		GunTextESPEnabled = GunTextESPEnabled,
+		XrayEnabled      = XrayEnabled,
+		NoclipEnabled    = NoclipEnabled,
+		FlyEnabled       = FlyEnabled,
+		AntiFlingEnabled = AntiFlingEnabled,
+
+		InfiniteZoomEnabled = InfiniteZoomEnabled,
+		PlayerSpeed      = PlayerSpeed,
+		PlayerJump       = PlayerJump,
+		FlySpeed         = FlySpeed,
+		PlayerSpinSpeed  = PlayerSpinSpeed,
+		PlayerFOV        = PlayerFOV,
+		MaxZoomDist      = MaxZoomDist,
+		FpsCap           = FpsCap,
+		
+		CustomCursorID   = CustomCursorID,
 		CustomCursorSize = CustomCursorSize,
+		CursorSpinEnabled= CursorSpinEnabled,
+		CursorSpinSpeed  = CursorSpinSpeed,
+		CursorAngleEnabled = CursorAngleEnabled,
+		CursorAngle      = CursorAngle,
+		
+		InnocentHue      = InnocentHue,
+		MurdererHue      = MurdererHue,
+		SheriffHue       = SheriffHue,
+		GunHue           = GunHue,
+		EspFillTransparency = EspFillTransparency,
+		GunEspFillTransparency = GunEspFillTransparency,
 	})
 end
 
@@ -85,27 +122,26 @@ end
 -- GUI ROOT SETUP
 -- ============================================================
 local gui = Instance.new("ScreenGui")
-gui.Name         = "Alienware"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true -- Forces the ScreenGui to match absolute screen coordinates
-gui.Parent       = game.CoreGui
+gui.Name           = "Alienware"
+gui.ResetOnSpawn   = false
+gui.IgnoreGuiInset = true
+gui.Parent         = game.CoreGui
 
--- DYNAMIC CUSTOM CURSOR OVERLAY MOUSE TRACKING
+-- CUSTOM CURSOR OVERLAY
 local CursorOverlay = Instance.new("ImageLabel")
-CursorOverlay.Name = "CustomCursorOverlay"
+CursorOverlay.Name                  = "CustomCursorOverlay"
 CursorOverlay.BackgroundTransparency = 1
-CursorOverlay.BorderSizePixel = 0 -- REMOVES ENGINE STROKE/BLACK OUTLINE ARTIFACTS
-CursorOverlay.BorderColor3 = Color3.fromRGB(0,0,0)
-CursorOverlay.AnchorPoint = Vector2.new(0.5, 0.5) -- Centers the image perfectly on the coordinate
-CursorOverlay.Size = UDim2.new(0, CustomCursorSize, 0, CustomCursorSize)
-CursorOverlay.ZIndex = 9999 -- Ensure it sits above all other UI elements
-CursorOverlay.Visible = false
-CursorOverlay.Parent = gui
+CursorOverlay.BorderSizePixel       = 0
+CursorOverlay.BorderColor3          = Color3.fromRGB(0,0,0)
+CursorOverlay.AnchorPoint           = Vector2.new(0.5, 0.5)
+CursorOverlay.Size                  = UDim2.new(0, CustomCursorSize, 0, CustomCursorSize)
+CursorOverlay.ZIndex                = 9999
+CursorOverlay.Visible               = false
+CursorOverlay.Parent                = gui
 
--- HELPER: RESOLVE RAW ID TO TEXTURE URL
 local function ResolveCursorIcon(id)
 	if id == "" then return "" end
-	local cleanId = id:gsub("%D", "") 
+	local cleanId = id:gsub("%D", "")
 	if cleanId ~= "" then
 		return "rbxthumb://type=Asset&id=" .. cleanId .. "&w=150&h=150"
 	end
@@ -115,28 +151,43 @@ end
 local function UpdateCursorDisplay()
 	local resolved = ResolveCursorIcon(CustomCursorID)
 	if resolved ~= "" then
-		UIS.MouseIconEnabled = false -- Hard disable core default mouse drawing completely
-		Mouse.Icon = "rbxasset://textures/Blank.png" -- Fallback mask engine mouse
-		CursorOverlay.Image = resolved
-		CursorOverlay.Size = UDim2.new(0, CustomCursorSize, 0, CustomCursorSize)
+		UIS.MouseIconEnabled  = false
+		Mouse.Icon            = "rbxasset://textures/Blank.png"
+		CursorOverlay.Image   = resolved
+		CursorOverlay.Size    = UDim2.new(0, CustomCursorSize, 0, CustomCursorSize)
 		CursorOverlay.Visible = true
 	else
-		UIS.MouseIconEnabled = true -- Restore normal hardware mouse rendering
-		Mouse.Icon = "" 
+		UIS.MouseIconEnabled  = true
+		Mouse.Icon            = ""
 		CursorOverlay.Visible = false
 	end
 end
 
-TrackConn(RunService.RenderStepped:Connect(function()
+TrackConn(RunService.RenderStepped:Connect(function(dt)
 	if CursorOverlay.Visible and Active then
 		local location = UIS:GetMouseLocation()
 		CursorOverlay.Position = UDim2.new(0, location.X, 0, location.Y)
-		-- Continuous assertion check to stop Roblox from forcefully drawing hardware pointer lines
+		
+		if CursorSpinEnabled then
+			CursorOverlay.Rotation = (CursorOverlay.Rotation + (CursorSpinSpeed * dt * 20)) % 360
+		elseif CursorAngleEnabled then
+			CursorOverlay.Rotation = CursorAngle
+		else
+			CursorOverlay.Rotation = 0
+		end
+		
 		if UIS.MouseIconEnabled then
 			UIS.MouseIconEnabled = false
 		end
 	end
 end))
+
+-- FPS CAP APPLICATION
+local function ApplyFpsCap()
+	if setfpscap then
+		pcall(function() setfpscap(FpsCap) end)
+	end
+end
 
 -- APPLY CHARACTER STATS
 local function ApplyCharacterStats()
@@ -149,20 +200,51 @@ local function ApplyCharacterStats()
 	end
 end
 
+-- FOV APPLICATION
+local function ApplyFOV()
+	Camera.FieldOfView = PlayerFOV
+end
+
+-- INFINITE ZOOM
+local ZOOM_BIND_NAME = "AlienwareZoomOverride"
+
+local function SetZoom(min, max)
+	LocalPlayer.CameraMinZoomDistance = min
+	LocalPlayer.CameraMaxZoomDistance = max
+end
+
+local function EnableInfiniteZoom()
+	pcall(function() RunService:UnbindFromRenderStep(ZOOM_BIND_NAME) end)
+	RunService:BindToRenderStep(ZOOM_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, function()
+		if not InfiniteZoomEnabled or not Active then
+			pcall(function() RunService:UnbindFromRenderStep(ZOOM_BIND_NAME) end)
+			return
+		end
+		SetZoom(0.5, MaxZoomDist)
+	end)
+end
+
+local function DisableInfiniteZoom()
+	pcall(function() RunService:UnbindFromRenderStep(ZOOM_BIND_NAME) end)
+	SetZoom(0.5, 400)
+end
+
 TrackConn(LocalPlayer.CharacterAdded:Connect(function()
 	task.wait(0.6)
 	ApplyCharacterStats()
+	ApplyFOV()
 	UpdateCursorDisplay()
+	if InfiniteZoomEnabled then EnableInfiniteZoom() end
 end))
 
--- NOCLIP LOOP IMPLEMENTATION
+-- NOCLIP
 local noclipConnection
 local function StartNoclip()
 	if noclipConnection then noclipConnection:Disconnect() end
 	noclipConnection = RunService.Stepped:Connect(function()
-		if not NoclipEnabled or not Active then 
+		if not NoclipEnabled or not Active then
 			if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
-			return 
+			return
 		end
 		local char = LocalPlayer.Character
 		if char then
@@ -178,18 +260,38 @@ end
 
 local function ToggleNoclip(state)
 	NoclipEnabled = state
-	if NoclipEnabled then
-		StartNoclip()
+	if NoclipEnabled then StartNoclip()
 	else
-		if noclipConnection then
-			noclipConnection:Disconnect()
-			noclipConnection = nil
-		end
+		if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
 	end
 	SaveAllSettings()
 end
 
--- FLY IMPLEMENTATION
+-- ANTI FLING PHYSICS ENFORCEMENT
+TrackConn(RunService.Stepped:Connect(function()
+	if not AntiFlingEnabled or not Active then return end
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			for _, part in ipairs(player.Character:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.CanCollide = false
+				end
+			end
+		end
+	end
+end))
+
+-- SPIN BOT MOTOR
+TrackConn(RunService.Heartbeat:Connect(function(dt)
+	if not Active then return end
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if hrp and PlayerSpinSpeed > 0 then
+		hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(PlayerSpinSpeed * dt * 10), 0)
+	end
+end))
+
+-- FLY
 local flyConnection
 local bVelocity, bGyro
 
@@ -197,44 +299,34 @@ local function StopFlying()
 	if flyConnection then flyConnection:Disconnect() flyConnection = nil end
 	if bVelocity then bVelocity:Destroy() bVelocity = nil end
 	if bGyro then bGyro:Destroy() bGyro = nil end
-	
 	local char = LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if hum then
-		hum.PlatformStand = false
-	end
+	if hum then hum.PlatformStand = false end
 end
 
 local function StartFlying()
 	StopFlying()
 	if not FlyEnabled or not Active then return end
-
 	local char = LocalPlayer.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+	local hum  = char and char:FindFirstChildOfClass("Humanoid")
 	if not hrp or not hum then return end
-
 	hum.PlatformStand = true
-
 	bGyro = Instance.new("BodyGyro")
 	bGyro.P = 9e4
 	bGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
 	bGyro.cframe = hrp.CFrame
 	bGyro.Parent = hrp
-
 	bVelocity = Instance.new("BodyVelocity")
 	bVelocity.velocity = Vector3.new(0, 0.1, 0)
 	bVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
 	bVelocity.Parent = hrp
-
 	flyConnection = RunService.RenderStepped:Connect(function()
 		if not FlyEnabled or not Active or not hrp.Parent or not hum.Parent then
 			StopFlying()
 			return
 		end
-
 		bGyro.cframe = Camera.CFrame
-
 		local moveDirection = Vector3.new(0, 0, 0)
 		if UIS:IsKeyDown(Enum.KeyCode.W) then moveDirection = moveDirection + Camera.CFrame.LookVector end
 		if UIS:IsKeyDown(Enum.KeyCode.S) then moveDirection = moveDirection - Camera.CFrame.LookVector end
@@ -242,7 +334,6 @@ local function StartFlying()
 		if UIS:IsKeyDown(Enum.KeyCode.D) then moveDirection = moveDirection + Camera.CFrame.RightVector end
 		if UIS:IsKeyDown(Enum.KeyCode.Space) then moveDirection = moveDirection + Vector3.new(0, 1, 0) end
 		if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then moveDirection = moveDirection - Vector3.new(0, 1, 0) end
-
 		if moveDirection.Magnitude > 0 then
 			bVelocity.velocity = moveDirection.Unit * FlySpeed
 		else
@@ -254,11 +345,7 @@ end
 
 local function ToggleFly(state)
 	FlyEnabled = state
-	if FlyEnabled then
-		StartFlying()
-	else
-		StopFlying()
-	end
+	if FlyEnabled then StartFlying() else StopFlying() end
 	SaveAllSettings()
 end
 
@@ -270,7 +357,6 @@ end))
 -- ROLE CACHE
 local RoleCache = {}
 
--- REMOVE FUNCTIONS
 local function RemoveChamsESP()
 	for _, player in pairs(Players:GetPlayers()) do
 		if player.Character then
@@ -396,14 +482,16 @@ end
 local function GetRoleColor(char)
 	if RoleESPEnabled then
 		local cached = ResolveRoleFromCache(char)
-		if cached == "Murderer" then return Color3.fromRGB(204, 0, 0) end
-		if cached == "Sheriff"  then return Color3.fromRGB(0, 0, 204) end
+		if cached == "Murderer" then return Color3.fromHSV(MurdererHue / 360, 1, 1) end
+		if cached == "Sheriff"  then return Color3.fromHSV(SheriffHue / 360, 1, 1) end
+		
 		local _, murdererChar = GetMurdererV1()
 		local _, sheriffChar  = GetSheriffV1()
-		if char == murdererChar then return Color3.fromRGB(204, 0, 0) end
-		if char == sheriffChar  then return Color3.fromRGB(0, 0, 204) end
+		
+		if char == murdererChar then return Color3.fromHSV(MurdererHue / 360, 1, 1) end
+		if char == sheriffChar  then return Color3.fromHSV(SheriffHue / 360, 1, 1) end
 	end
-	return Color3.fromRGB(0, 204, 0)
+	return Color3.fromHSV(InnocentHue / 360, 1, 1)
 end
 
 -- CHAMS
@@ -411,17 +499,18 @@ local function ApplyChams(char, color)
 	if not char then return end
 	local existing = char:FindFirstChild("ChamsESP")
 	if existing then
-		existing.FillColor    = color
-		existing.OutlineColor = color
+		existing.FillColor        = color
+		existing.OutlineColor     = color
+		existing.FillTransparency = EspFillTransparency / 100
 		return
 	end
 	local h = Instance.new("Highlight")
-	h.Name               = "ChamsESP"
-	h.FillTransparency   = 1
+	h.Name                = "ChamsESP"
+	h.FillTransparency    = EspFillTransparency / 100
 	h.OutlineTransparency = 0.25
-	h.FillColor          = color
-	h.OutlineColor       = color
-	h.Parent             = char
+	h.FillColor           = color
+	h.OutlineColor        = color
+	h.Parent              = char
 end
 
 -- GUN ESP
@@ -429,24 +518,36 @@ local function CreateGunESP(gun)
 	if not GunESPEnabled then return end
 	if gun:FindFirstChild("GunESP") then return end
 	local highlight = Instance.new("Highlight")
-	highlight.Name               = "GunESP"
-	highlight.FillColor          = Color3.fromRGB(0, 255, 255)
-	highlight.FillTransparency   = 0.7
+	highlight.Name                = "GunESP"
+	highlight.FillColor           = Color3.fromHSV(GunHue / 360, 1, 1)
+	highlight.FillTransparency    = GunEspFillTransparency / 100
 	highlight.OutlineTransparency = 0.2
-	highlight.Parent             = gun
+	highlight.Parent              = gun
 	local billboard = Instance.new("BillboardGui", gun)
 	billboard.Name        = "GunESP"
 	billboard.Size        = UDim2.new(0, 120, 0, 20)
 	billboard.StudsOffset = Vector3.new(0, 2, 0)
 	billboard.AlwaysOnTop = true
+	billboard.Enabled     = GunTextESPEnabled -- TEXT ESP TOGGLE
 	local text = Instance.new("TextLabel", billboard)
-	text.Size                  = UDim2.new(1, 0, 1, 0)
+	text.Size                   = UDim2.new(1, 0, 1, 0)
 	text.BackgroundTransparency = 1
-	text.Text                  = ""
-	text.TextColor3            = Color3.fromRGB(210, 190, 255)
-	text.Font                  = Enum.Font.GothamBold
-	text.TextScaled            = true
+	text.Text                   = "🔫 DROP"
+	text.TextColor3             = Color3.fromRGB(210, 190, 255)
+	text.Font                   = Enum.Font.GothamBold
+	text.TextScaled             = true
 	text.TextStrokeTransparency = 0
+end
+
+local function UpdateAllGunObjects()
+	for _, v in pairs(workspace:GetDescendants()) do
+		if v.Name == "GunESP" and v:IsA("Highlight") then
+			v.FillColor = Color3.fromHSV(GunHue / 360, 1, 1)
+			v.FillTransparency = GunEspFillTransparency / 100
+		elseif v.Name == "GunESP" and v:IsA("BillboardGui") then
+			v.Enabled = GunTextESPEnabled -- UPDATE TEXT ESP TOGGLE
+		end
+	end
 end
 
 TrackConn(workspace.DescendantAdded:Connect(function(obj)
@@ -461,28 +562,22 @@ local currentSpectateTarget = nil
 local function SpectatePlayer(targetPlayer, buttonInstance)
 	local cam = workspace.CurrentCamera
 	if not cam then return end
-
 	if currentSpectateTarget == targetPlayer then
 		currentSpectateTarget = nil
 		if buttonInstance then buttonInstance.Text = "Spectate" end
-		
 		local localChar = LocalPlayer.Character
 		local localHum  = localChar and localChar:FindFirstChildOfClass("Humanoid")
 		cam.CameraSubject = localHum or workspace
 		cam.CameraType    = Enum.CameraType.Custom
 		return
 	end
-
 	local char = targetPlayer and targetPlayer.Character
 	local hum  = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum then return end
-
 	currentSpectateTarget = targetPlayer
 	if buttonInstance then buttonInstance.Text = "Unspectate" end
-
 	cam.CameraType    = Enum.CameraType.Follow
 	cam.CameraSubject = hum
-
 	local spectateConn
 	spectateConn = RunService.RenderStepped:Connect(function()
 		if currentSpectateTarget ~= targetPlayer or not Active then
@@ -504,7 +599,7 @@ local function SpectatePlayer(targetPlayer, buttonInstance)
 end
 
 -- ============================================================
--- MAIN WINDOW CONTAINER GUI
+-- MAIN WINDOW
 -- ============================================================
 local main = Instance.new("Frame", gui)
 main.Size             = UDim2.new(0, 560, 0, 340)
@@ -515,7 +610,7 @@ main.Draggable        = true
 main.ClipsDescendants = true
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
 
--- FADE LOGIC
+-- FADE
 local guiVisible = true
 local fadeActive = false
 local fadeTargets = {}
@@ -536,20 +631,17 @@ local function BuildFadeTargets()
 		if inst:IsA("ImageLabel") or inst:IsA("ImageButton") then
 			table.insert(fadeTargets, { inst = inst, prop = "ImageTransparency", opaque = inst.ImageTransparency })
 		end
-		for _, child in ipairs(inst:GetChildren()) do
-			Collect(child)
-		end
+		for _, child in ipairs(inst:GetChildren()) do Collect(child) end
 	end
 	Collect(main)
 end
 
 local function DoFade(visible)
 	if fadeActive then return end
-	fadeActive   = true
-	guiVisible   = visible
-	local dur    = visible and 0.22 or 0.18
+	fadeActive  = true
+	guiVisible  = visible
+	local dur   = visible and 0.22 or 0.18
 	local easeDir = visible and Enum.EasingDirection.Out or Enum.EasingDirection.In
-
 	if visible then
 		for _, t in ipairs(fadeTargets) do
 			if t.inst and t.inst.Parent then t.inst[t.prop] = 1 end
@@ -579,10 +671,7 @@ local function DoFade(visible)
 				tw:Play()
 				tw.Completed:Connect(function()
 					pending = pending - 1
-					if pending <= 0 then
-						main.Visible = false
-						fadeActive   = false
-					end
+					if pending <= 0 then main.Visible = false fadeActive = false end
 				end)
 			else
 				pending = pending - 1
@@ -592,7 +681,7 @@ local function DoFade(visible)
 	end
 end
 
--- TOP HEADER BAR
+-- TOP BAR
 local titleBar = Instance.new("Frame", main)
 titleBar.Size             = UDim2.new(1, 0, 0, 36)
 titleBar.BackgroundColor3 = Color3.fromRGB(24, 24, 26)
@@ -618,7 +707,7 @@ title.Font               = Enum.Font.GothamBold
 title.TextSize           = 14
 title.TextXAlignment     = Enum.TextXAlignment.Left
 
--- SIDEBAR MENU NAVIGATION
+-- SIDEBAR
 local sidebar = Instance.new("Frame", main)
 sidebar.Size             = UDim2.new(0, 70, 1, -36)
 sidebar.Position         = UDim2.new(0, 0, 0, 36)
@@ -626,7 +715,7 @@ sidebar.BackgroundColor3 = Color3.fromRGB(21, 21, 23)
 Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 10)
 
 local topButtons = Instance.new("Frame", sidebar)
-topButtons.Size             = UDim2.new(1, 0, 1, -60)
+topButtons.Size                 = UDim2.new(1, 0, 1, -60)
 topButtons.BackgroundTransparency = 1
 
 local sideLayout = Instance.new("UIListLayout", topButtons)
@@ -647,13 +736,11 @@ local function SideButton(text, active, parent)
 	btn.TextSize         = 11
 	btn.Text             = text
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-	
 	local stroke = Instance.new("UIStroke", btn)
-	stroke.Color = Color3.fromRGB(0, 204, 100)
-	stroke.Thickness = 1.5
+	stroke.Color           = Color3.fromRGB(0, 204, 100)
+	stroke.Thickness       = 1.5
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Enabled = active
-	
+	stroke.Enabled         = active
 	return btn
 end
 
@@ -673,12 +760,12 @@ settingsBtn.Text             = "⚙"
 Instance.new("UICorner", settingsBtn).CornerRadius = UDim.new(0, 8)
 
 local settingsStroke = Instance.new("UIStroke", settingsBtn)
-settingsStroke.Color = Color3.fromRGB(0, 204, 100)
-settingsStroke.Thickness = 1.5
+settingsStroke.Color           = Color3.fromRGB(0, 204, 100)
+settingsStroke.Thickness       = 1.5
 settingsStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-settingsStroke.Enabled = false
+settingsStroke.Enabled         = false
 
--- LAYOUT WINDOW VIEW CONTAINER
+-- CONTENT CONTAINER
 local contentRoot = Instance.new("Frame", main)
 contentRoot.Position             = UDim2.new(0, 80, 0, 46)
 contentRoot.Size                 = UDim2.new(1, -90, 1, -56)
@@ -693,7 +780,7 @@ sectionTitle.Font                = Enum.Font.GothamBold
 sectionTitle.TextSize            = 14
 sectionTitle.TextXAlignment      = Enum.TextXAlignment.Left
 
--- PAGE INSTANTIATOR FUNCTION
+-- PAGE FACTORY
 local function MakePage(isScrolling)
 	local page
 	if isScrolling then
@@ -718,13 +805,14 @@ local function MakePage(isScrolling)
 end
 
 local espPage      = MakePage(true)
-local teleportPage = MakePage(false)
+local teleportPage = MakePage(true)
 local charPage     = MakePage(true)
 local settingsPage = MakePage(false)
 local miscPage     = MakePage(true)
 espPage.Visible = true
 
--- WINDOW COMPRESSION LOGIC
+-- ============================================================
+-- MINIMIZE LOGIC
 local minimized = false
 local slideTweenActive = false
 
@@ -732,25 +820,15 @@ local function SetMinimized(state)
 	if slideTweenActive then return end
 	slideTweenActive = true
 	minimized = state
-	
 	local targetHeight = minimized and 36 or 340
-	local targetText = minimized and "+" or "-"
-	
-	minimizeBtn.Text = targetText
-	
+	minimizeBtn.Text = minimized and "+" or "-"
 	if minimized then
 		contentRoot.Visible = false
 		sidebar.Visible     = false
 	end
-	
-	local slideTween = TweenService:Create(
-		main,
-		TweenInfo.new(0.3, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out),
-		{ Size = UDim2.new(0, 560, 0, targetHeight) }
-	)
-	
-	slideTween:Play()
-	slideTween.Completed:Connect(function()
+	local tw = TweenService:Create(main, TweenInfo.new(0.3, Enum.EasingStyle.Cubic, Enum.EasingDirection.Out), { Size = UDim2.new(0, 560, 0, targetHeight) })
+	tw:Play()
+	tw.Completed:Connect(function()
 		if not minimized then
 			contentRoot.Visible = true
 			sidebar.Visible     = true
@@ -759,15 +837,16 @@ local function SetMinimized(state)
 	end)
 end
 
-minimizeBtn.MouseButton1Click:Connect(function() SetMinimized(not minimized) end)
-
 local function MobileConnect(btn, callback)
-	btn.MouseButton1Click:Connect(callback)
-	btn.TouchTap:Connect(function() callback() end)
+	btn.Activated:Connect(function()
+		callback()
+	end)
 end
 
+minimizeBtn.Activated:Connect(function() SetMinimized(not minimized) end)
+
 -- ============================================================
--- GUI LAYOUT Rowan Creation Core Generators
+-- ROW BUILDERS
 -- ============================================================
 local function CreateRow(parent, titleText, descText, default, callback, isButton)
 	local row = Instance.new("Frame", parent)
@@ -791,7 +870,7 @@ local function CreateRow(parent, titleText, descText, default, callback, isButto
 	descLbl.BackgroundTransparency = 1
 	descLbl.Text                = descText
 	descLbl.TextColor3          = Color3.fromRGB(140, 140, 150)
-	descLbl.Font                = Enum.Font.Gotham
+	descLbl.Font = Enum.Font.Gotham
 	descLbl.TextSize            = 11
 	descLbl.TextXAlignment      = Enum.TextXAlignment.Left
 
@@ -805,7 +884,7 @@ local function CreateRow(parent, titleText, descText, default, callback, isButto
 		btn.TextSize         = 12
 		btn.Text             = tostring(HotkeyKey.Name)
 		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-		MobileConnect(btn, function()
+		btn.Activated:Connect(function()
 			WaitingForKey = true
 			btn.Text = "Press key..."
 		end)
@@ -843,7 +922,7 @@ local function CreateRow(parent, titleText, descText, default, callback, isButto
 		callback(state)
 	end
 
-	MobileConnect(hitBtn, DoToggle)
+	hitBtn.Activated:Connect(DoToggle)
 
 	return {
 		set = function(v)
@@ -894,13 +973,13 @@ local function CreateActionRow(parent, titleText, descText, buttonText, callback
 	btn.TextSize         = 12
 	btn.Text             = buttonText
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-	MobileConnect(btn, function()
+	btn.Activated:Connect(function()
 		callback(btn)
 	end)
 	return btn
 end
 
-local function CreateSliderRow(parent, titleText, descText, minVal, maxVal, currentVal, callback)
+local function CreateSliderRow(parent, titleText, descText, minVal, maxVal, currentVal, callback, isHueSlider)
 	local row = Instance.new("Frame", parent)
 	row.Size             = UDim2.new(1, 0, 0, 68)
 	row.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
@@ -922,7 +1001,7 @@ local function CreateSliderRow(parent, titleText, descText, minVal, maxVal, curr
 	valueLbl.BackgroundTransparency = 1
 	valueLbl.Text                = tostring(math.floor(currentVal))
 	valueLbl.TextColor3          = Color3.fromRGB(100, 200, 140)
-	valueLbl.Font = Enum.Font.GothamBold
+	valueLbl.Font                = Enum.Font.GothamBold
 	valueLbl.TextSize            = 13
 	valueLbl.TextXAlignment      = Enum.TextXAlignment.Right
 
@@ -944,12 +1023,12 @@ local function CreateSliderRow(parent, titleText, descText, minVal, maxVal, curr
 
 	local fill = Instance.new("Frame", trackBG)
 	fill.Size             = UDim2.new((currentVal - minVal) / (maxVal - minVal), 0, 1, 0)
-	fill.BackgroundColor3 = Color3.fromRGB(70, 130, 90)
+	fill.BackgroundColor3 = isHueSlider and Color3.fromHSV(currentVal / 360, 1, 1) or Color3.fromRGB(70, 130, 90)
 	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
 	local knob = Instance.new("Frame", trackBG)
-	knob.Size             = UDim2.new(0, 16, 0, 16)
 	knob.Position         = UDim2.new((currentVal - minVal) / (maxVal - minVal), -8, 0.5, -8)
+	knob.Size             = UDim2.new(0, 16, 0, 16)
 	knob.BackgroundColor3 = Color3.fromRGB(210, 210, 220)
 	knob.ZIndex           = 3
 	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
@@ -961,26 +1040,20 @@ local function CreateSliderRow(parent, titleText, descText, minVal, maxVal, curr
 		local trackAbsSize = trackBG.AbsoluteSize.X
 		local ratio = math.clamp((absX - trackAbsPos) / trackAbsSize, 0, 1)
 		local val   = math.floor(minVal + ratio * (maxVal - minVal))
-		fill.Size      = UDim2.new(ratio, 0, 1, 0)
-		knob.Position  = UDim2.new(ratio, -8, 0.5, -8)
-		valueLbl.Text  = tostring(val)
+		fill.Size     = UDim2.new(ratio, 0, 1, 0)
+		if isHueSlider then
+			fill.BackgroundColor3 = Color3.fromHSV(val / 360, 1, 1)
+		end
+		knob.Position = UDim2.new(ratio, -8, 0.5, -8)
+		valueLbl.Text = tostring(val)
 		callback(val)
-	end
-
-	local function StartDrag(input)
-		dragging          = true
-		main.Draggable    = false
-		UpdateFromAbsX(input.Position.X)
-	end
-
-	local function StopDrag()
-		dragging          = false
-		main.Draggable    = true   
 	end
 
 	trackBG.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			StartDrag(input)
+			dragging       = true
+			main.Draggable = false
+			UpdateFromAbsX(input.Position.X)
 		end
 	end)
 
@@ -993,7 +1066,8 @@ local function CreateSliderRow(parent, titleText, descText, minVal, maxVal, curr
 
 	TrackConn(UIS.InputEnded:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-			StopDrag()
+			dragging       = false
+			main.Draggable = true
 		end
 	end))
 
@@ -1007,7 +1081,10 @@ local function CreateSliderRow(parent, titleText, descText, minVal, maxVal, curr
 		row = row,
 		UpdateExternal = function(newVal)
 			local ratio = math.clamp((newVal - minVal) / (maxVal - minVal), 0, 1)
-			fill.Size = UDim2.new(ratio, 0, 1, 0)
+			fill.Size     = UDim2.new(ratio, 0, 1, 0)
+			if isHueSlider then
+				fill.BackgroundColor3 = Color3.fromHSV(newVal / 360, 1, 1)
+			end
 			knob.Position = UDim2.new(ratio, -8, 0.5, -8)
 			valueLbl.Text = tostring(math.floor(newVal))
 		end
@@ -1030,9 +1107,65 @@ CreateRow(espPage, "Role Detection", "Color murderer and sheriff", RoleESPEnable
 	SaveAllSettings()
 end)
 
+local murdererColorSlider = CreateSliderRow(espPage, "Murderer Color (Hue)", "Change Murderer ESP color scale", 0, 360, MurdererHue, function(v)
+	MurdererHue = v
+	SaveAllSettings()
+end, true)
+
+local sheriffColorSlider = CreateSliderRow(espPage, "Sheriff Color (Hue)", "Change Sheriff ESP color scale", 0, 360, SheriffHue, function(v)
+	SheriffHue = v
+	SaveAllSettings()
+end, true)
+
+local innocentColorSlider = CreateSliderRow(espPage, "Innocent Color (Hue)", "Change Innocent ESP color scale", 0, 360, InnocentHue, function(v)
+	InnocentHue = v
+	SaveAllSettings()
+end, true)
+
+local gunColorSlider = CreateSliderRow(espPage, "Gun ESP Color (Hue)", "Change Dropped Gun ESP color scale", 0, 360, GunHue, function(v)
+	GunHue = v
+	UpdateAllGunObjects()
+	SaveAllSettings()
+end, true)
+
+local espTransSlider = CreateSliderRow(espPage, "Main ESP Transparency", "Set player highlight fill transparency", 0, 100, EspFillTransparency, function(v)
+	EspFillTransparency = v
+	SaveAllSettings()
+end)
+
+local gunTransSlider = CreateSliderRow(espPage, "Gun ESP Transparency", "Set gun highlight fill transparency", 0, 100, GunEspFillTransparency, function(v)
+	GunEspFillTransparency = v
+	UpdateAllGunObjects()
+	SaveAllSettings()
+end)
+
+CreateActionRow(espPage, "Reset Colors", "Revert ESP profiles back to configurations", "Reset", function()
+	MurdererHue = 0
+	SheriffHue = 240
+	InnocentHue = 120
+	GunHue = 180
+	EspFillTransparency = 100
+	GunEspFillTransparency = 70
+	murdererColorSlider.UpdateExternal(0)
+	sheriffColorSlider.UpdateExternal(240)
+	innocentColorSlider.UpdateExternal(120)
+	gunColorSlider.UpdateExternal(180)
+	espTransSlider.UpdateExternal(100)
+	gunTransSlider.UpdateExternal(70)
+	UpdateAllGunObjects()
+	SaveAllSettings()
+end)
+
 CreateRow(espPage, "Gun ESP", "Highlight dropped gun", GunESPEnabled, function(v)
 	GunESPEnabled = v
 	if not v then RemoveGunESP() end
+	SaveAllSettings()
+end)
+
+-- *** NEW TOGGLE: GUN TEXT ESP ***
+CreateRow(espPage, "Gun Text ESP", "Show 🔫 DROP text on the gun", GunTextESPEnabled, function(v)
+	GunTextESPEnabled = v
+	UpdateAllGunObjects()
 	SaveAllSettings()
 end)
 
@@ -1051,7 +1184,7 @@ xrayKeyButton.TextSize         = 12
 xrayKeyButton.Text             = "Xray Hotkey: " .. tostring(XrayKey.Name)
 Instance.new("UICorner", xrayKeyButton).CornerRadius = UDim.new(0, 8)
 
-MobileConnect(xrayKeyButton, function()
+xrayKeyButton.Activated:Connect(function()
 	WaitingForXrayKey = true
 	xrayKeyButton.Text = "Press key..."
 end)
@@ -1061,7 +1194,7 @@ CreateActionRow(espPage, "View Murderer", "Spectate murderer role toggle", "Spec
 	if mPlayer then
 		SpectatePlayer(mPlayer, btnInstance)
 	else
-		btnInstance.Text = "No Murderer Found"
+		btnInstance.Text = "Not Found"
 		task.delay(1.5, function() btnInstance.Text = "Spectate" end)
 	end
 end)
@@ -1071,12 +1204,14 @@ CreateActionRow(espPage, "View Sheriff", "Spectate sheriff role toggle", "Specta
 	if sPlayer then
 		SpectatePlayer(sPlayer, btnInstance)
 	else
-		btnInstance.Text = "No Sheriff Found"
+		btnInstance.Text = "Not Found"
 		task.delay(1.5, function() btnInstance.Text = "Spectate" end)
 	end
 end)
 
+-- ============================================================
 -- TELEPORT PAGE
+-- ============================================================
 CreateActionRow(teleportPage, "Grab Gun", "Teleport to dropped gun briefly", "Grab Gun", function()
 	local char = LocalPlayer.Character
 	if not char then return end
@@ -1092,7 +1227,54 @@ CreateActionRow(teleportPage, "Grab Gun", "Teleport to dropped gun briefly", "Gr
 	hrp.CFrame = originalCFrame
 end)
 
+CreateActionRow(teleportPage, "Teleport to Murderer", "Instantly teleport to the murderer's location", "Teleport", function(btnInstance)
+	local char = LocalPlayer.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	local mPlayer, mChar = GetMurdererV1()
+	if mPlayer and mChar then
+		local mHRP = mChar:FindFirstChild("HumanoidRootPart")
+		if mHRP then
+			hrp.CFrame = mHRP.CFrame + Vector3.new(0, 3, 0)
+		else
+			btnInstance.Text = "Not Found"
+			task.delay(1.5, function() btnInstance.Text = "Teleport" end)
+		end
+	else
+		btnInstance.Text = "Not Found"
+		task.delay(1.5, function() btnInstance.Text = "Teleport" end)
+	end
+end)
+
+CreateActionRow(teleportPage, "Teleport to Sheriff", "Instantly teleport to the sheriff's location", "Teleport", function(btnInstance)
+	local char = LocalPlayer.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	local sPlayer, sChar = GetSheriffV1()
+	if sPlayer and sChar then
+		local sHRP = sChar:FindFirstChild("HumanoidRootPart")
+		if sHRP then
+			hrp.CFrame = sHRP.CFrame + Vector3.new(0, 3, 0)
+		else
+			btnInstance.Text = "Not Found"
+			task.delay(1.5, function() btnInstance.Text = "Teleport" end)
+		end
+	else
+		btnInstance.Text = "Not Found"
+		task.delay(1.5, function() btnInstance.Text = "Teleport" end)
+	end
+end)
+
+-- ============================================================
 -- CHARACTER PAGE
+-- ============================================================
+CreateRow(charPage, "Anti Fling", "Disables character-to-character collision checking", AntiFlingEnabled, function(v)
+	AntiFlingEnabled = v
+	SaveAllSettings()
+end)
+
 CreateRow(charPage, "Noclip", "Walk straight through solid objects and walls", NoclipEnabled, function(v)
 	ToggleNoclip(v)
 end)
@@ -1118,23 +1300,63 @@ CreateSliderRow(charPage, "Jump Power", "Default is 50", 50, 250, PlayerJump, fu
 	SaveAllSettings()
 end)
 
-CreateActionRow(charPage, "Reset Stats", "Restore default speed and jump", "Reset", function()
-	PlayerSpeed = 16
-	PlayerJump  = 50
-	FlySpeed    = 50
-	ApplyCharacterStats()
+CreateSliderRow(charPage, "Spin Speed", "Spins your player character around (0 = Disabled)", 0, 500, PlayerSpinSpeed, function(v)
+	PlayerSpinSpeed = v
 	SaveAllSettings()
 end)
 
+-- FOV SLIDER
+CreateSliderRow(charPage, "FOV", "Field of view (default 70)", 30, 120, PlayerFOV, function(v)
+	PlayerFOV = v
+	ApplyFOV()
+	SaveAllSettings()
+end)
+
+-- INFINITE ZOOM
+CreateRow(charPage, "Infinite Zoom", "Zoom camera out to any distance", InfiniteZoomEnabled, function(v)
+	InfiniteZoomEnabled = v
+	if InfiniteZoomEnabled then EnableInfiniteZoom() else DisableInfiniteZoom() end
+	SaveAllSettings()
+end)
+
+local maxZoomSlider = CreateSliderRow(charPage, "Max Zoom Distance", "How far camera can zoom out", 50, 2000, MaxZoomDist, function(v)
+	MaxZoomDist = v
+	SaveAllSettings()
+	if InfiniteZoomEnabled then
+		LocalPlayer.CameraMaxZoomDistance = MaxZoomDist
+	end
+end)
+
+CreateActionRow(charPage, "Reset Stats", "Restore default character behavior properties", "Reset", function()
+	PlayerSpeed = 16
+	PlayerJump  = 50
+	FlySpeed    = 50
+	PlayerFOV   = 70
+	PlayerSpinSpeed = 0
+	ApplyCharacterStats()
+	ApplyFOV()
+	SaveAllSettings()
+end)
+
+-- ============================================================
 -- SETTINGS PAGE
+-- ============================================================
 local hotkeyButton = CreateRow(settingsPage, "GUI Hotkey", "Select key to show/hide GUI", false, function() end, true)
 
+-- ============================================================
 -- MISC PAGE
+-- ============================================================
 CreateActionRow(miscPage, "Rejoin Server", "Reconnect to the current server", "Rejoin", function()
 	TeleportService:Teleport(game.PlaceId, LocalPlayer)
 end)
 
--- CUSTOM CURSOR ROW
+CreateSliderRow(miscPage, "FPS Cap Override", "Adjust max hardware rendering rate targets", 30, 240, FpsCap, function(v)
+	FpsCap = v
+	ApplyFpsCap()
+	SaveAllSettings()
+end)
+
+-- CUSTOM CURSOR CONFIGURATION ROWS
 local cursorRow = Instance.new("Frame", miscPage)
 cursorRow.Size             = UDim2.new(1, 0, 0, 48)
 cursorRow.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
@@ -1171,7 +1393,7 @@ cursorInput.Text             = CustomCursorID == "" and "Enter ID..." or CustomC
 cursorInput.ClearTextOnFocus = false
 Instance.new("UICorner", cursorInput).CornerRadius = UDim.new(0, 6)
 
-cursorInput.FocusLost:Connect(function(enterPressed)
+cursorInput.FocusLost:Connect(function()
 	local text = cursorInput.Text
 	if text == "" or text == "Enter ID..." then
 		CustomCursorID = ""
@@ -1182,7 +1404,6 @@ cursorInput.FocusLost:Connect(function(enterPressed)
 	SaveAllSettings()
 end)
 
--- CURSOR SIZE SLIDER
 local sizeSlider = CreateSliderRow(miscPage, "Custom Cursor Size", "Adjust crosshair viewport rendering size", 16, 150, CustomCursorSize, function(v)
 	CustomCursorSize = v
 	if CursorOverlay.Visible then
@@ -1191,10 +1412,31 @@ local sizeSlider = CreateSliderRow(miscPage, "Custom Cursor Size", "Adjust cross
 	SaveAllSettings()
 end)
 
--- RESET CURSOR ROW
-CreateActionRow(miscPage, "Reset Cursor", "Revert mouse behavior back to standard configuration", "Reset", function()
-	CustomCursorID = ""
+CreateRow(miscPage, "Spin Cursor", "Constantly rotate your custom cursor", CursorSpinEnabled, function(v)
+	CursorSpinEnabled = v
+	SaveAllSettings()
+end)
+
+CreateSliderRow(miscPage, "Spin Speed", "Adjust cursor rotation speed", 1, 100, CursorSpinSpeed, function(v)
+	CursorSpinSpeed = v
+	SaveAllSettings()
+end)
+
+CreateRow(miscPage, "Angle Cursor", "Force cursor transformation to fixed angle setup", CursorAngleEnabled, function(v)
+	CursorAngleEnabled = v
+	SaveAllSettings()
+end)
+
+CreateSliderRow(miscPage, "Cursor Angle", "Manually pivot the fixed view layout alignment", 0, 360, CursorAngle, function(v)
+	CursorAngle = v
+	SaveAllSettings()
+end)
+
+CreateActionRow(miscPage, "Reset Cursor", "Revert mouse behavior configurations", "Reset", function()
+	CustomCursorID   = ""
 	CustomCursorSize = 32
+	CursorAngleEnabled = false
+	CursorAngle = 0
 	cursorInput.Text = "Enter ID..."
 	sizeSlider.UpdateExternal(32)
 	UpdateCursorDisplay()
@@ -1202,7 +1444,7 @@ CreateActionRow(miscPage, "Reset Cursor", "Revert mouse behavior back to standar
 end)
 
 -- ============================================================
--- PAGE SWITCHING CONTROLLER
+-- PAGE SWITCHING
 -- ============================================================
 local function SetPage(name)
 	espPage.Visible      = false
@@ -1219,32 +1461,32 @@ local function SetPage(name)
 	end
 
 	if name == "ESP" then
-		sectionTitle.Text    = "ESP"
-		espPage.Visible      = true
+		sectionTitle.Text = "ESP"
+		espPage.Visible   = true
 		espBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
 		espBtn.TextColor3       = Color3.fromRGB(230, 230, 240)
 		espBtn:FindFirstChildOfClass("UIStroke").Enabled = true
 	elseif name == "Teleport" then
-		sectionTitle.Text        = "Teleport"
-		teleportPage.Visible     = true
+		sectionTitle.Text     = "Teleport"
+		teleportPage.Visible  = true
 		teleportBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
 		teleportBtn.TextColor3       = Color3.fromRGB(230, 230, 240)
 		teleportBtn:FindFirstChildOfClass("UIStroke").Enabled = true
 	elseif name == "Character" then
-		sectionTitle.Text    = "Character"
-		charPage.Visible     = true
+		sectionTitle.Text = "Character"
+		charPage.Visible  = true
 		charBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
 		charBtn.TextColor3       = Color3.fromRGB(230, 230, 240)
 		charBtn:FindFirstChildOfClass("UIStroke").Enabled = true
 	elseif name == "Settings" then
-		sectionTitle.Text        = "Settings"
-		settingsPage.Visible     = true
+		sectionTitle.Text    = "Settings"
+		settingsPage.Visible = true
 		settingsBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
 		settingsBtn.TextColor3       = Color3.fromRGB(230, 230, 240)
 		settingsBtn:FindFirstChildOfClass("UIStroke").Enabled = true
 	else
-		sectionTitle.Text    = "Misc"
-		miscPage.Visible     = true
+		sectionTitle.Text = "Misc"
+		miscPage.Visible  = true
 		miscBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
 		miscBtn.TextColor3       = Color3.fromRGB(230, 230, 240)
 		miscBtn:FindFirstChildOfClass("UIStroke").Enabled = true
@@ -1257,12 +1499,17 @@ MobileConnect(charBtn,     function() SetPage("Character") end)
 MobileConnect(settingsBtn, function() SetPage("Settings")  end)
 MobileConnect(miscBtn,     function() SetPage("Misc")      end)
 
--- INITIAL STATE RENDERS
+-- ============================================================
+-- INIT
+-- ============================================================
 BuildFadeTargets()
 UpdateCursorDisplay()
+ApplyFOV()
+ApplyFpsCap()
+if InfiniteZoomEnabled then EnableInfiniteZoom() end
 
 -- ============================================================
--- INPUT SYSTEM HANDLERS
+-- INPUT HANDLERS
 -- ============================================================
 TrackConn(UIS.InputBegan:Connect(function(i, gp)
 	if gp then return end
@@ -1270,9 +1517,9 @@ TrackConn(UIS.InputBegan:Connect(function(i, gp)
 
 	if WaitingForKey then
 		if i.UserInputType == Enum.UserInputType.Keyboard then
-			HotkeyKey        = i.KeyCode
+			HotkeyKey         = i.KeyCode
 			hotkeyButton.Text = tostring(HotkeyKey.Name)
-			WaitingForKey    = false
+			WaitingForKey     = false
 			SaveAllSettings()
 		end
 		return
@@ -1280,9 +1527,9 @@ TrackConn(UIS.InputBegan:Connect(function(i, gp)
 
 	if WaitingForXrayKey then
 		if i.UserInputType == Enum.UserInputType.Keyboard then
-			XrayKey              = i.KeyCode
-			xrayKeyButton.Text   = "Xray Hotkey: " .. tostring(XrayKey.Name)
-			WaitingForXrayKey    = false
+			XrayKey            = i.KeyCode
+			xrayKeyButton.Text = "Xray Hotkey: " .. tostring(XrayKey.Name)
+			WaitingForXrayKey  = false
 			SaveAllSettings()
 		end
 		return
@@ -1300,7 +1547,7 @@ TrackConn(UIS.InputBegan:Connect(function(i, gp)
 	end
 end))
 
--- ESP SCHEDULER THREAD
+-- ESP LOOP
 task.spawn(function()
 	while task.wait(0.4) do
 		if not Active then break end
@@ -1314,50 +1561,45 @@ task.spawn(function()
 	end
 end)
 
--- START LOOPS
+-- FOV ENFORCEMENT
+TrackConn(RunService.RenderStepped:Connect(function()
+	if Active and math.abs(Camera.FieldOfView - PlayerFOV) > 0.5 then
+		Camera.FieldOfView = PlayerFOV
+	end
+end))
+
+-- BOOT STATES
 if XrayEnabled then EnableXray() end
 if NoclipEnabled then StartNoclip() end
 if FlyEnabled then StartFlying() end
 ApplyCharacterStats()
 
 -- ============================================================
--- KILLSWITCH CLEANUP
+-- KILLSWITCH (BackSlash)
 -- ============================================================
 local killConn
 killConn = UIS.InputBegan:Connect(function(i)
 	if i.KeyCode == Enum.KeyCode.BackSlash then
 		killConn:Disconnect()
 		Active = false
-
-		for _, conn in pairs(AllConnections) do
-			pcall(function() conn:Disconnect() end)
-		end
+		for _, conn in pairs(AllConnections) do pcall(function() conn:Disconnect() end) end
 		table.clear(AllConnections)
-
 		RemoveChamsESP()
 		RemoveGunESP()
 		DisableXray()
 		StopFlying()
-		
-		if noclipConnection then
-			noclipConnection:Disconnect()
-			noclipConnection = nil
-		end
-
-		UIS.MouseIconEnabled = true -- Restore baseline tracking visibility
+		DisableInfiniteZoom()
+		if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
+		UIS.MouseIconEnabled = true
 		Mouse.Icon = ""
-		CursorOverlay:Destroy()
-
+		Camera.FieldOfView = 70
+		if setfpscap then setfpscap(60) end
 		local cam = workspace.CurrentCamera
 		if cam then
 			local localChar = LocalPlayer.Character
 			local localHum  = localChar and localChar:FindFirstChildOfClass("Humanoid")
-			if localHum then
-				cam.CameraSubject = localHum
-				cam.CameraType    = Enum.CameraType.Custom
-			end
+			if localHum then cam.CameraSubject = localHum cam.CameraType = Enum.CameraType.Custom end
 		end
-
 		local char = LocalPlayer.Character
 		if char then
 			local hum = char:FindFirstChildOfClass("Humanoid")
@@ -1366,7 +1608,6 @@ killConn = UIS.InputBegan:Connect(function(i)
 				hum.JumpPower = 50
 			end
 		end
-
 		if gui and gui.Parent then gui:Destroy() end
 		print("[Alienware] Killswitch activated — script destroyed.")
 	end
