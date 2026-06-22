@@ -70,6 +70,11 @@ local NoclipEnabled   = saved.NoclipEnabled   == true
 local FlyEnabled      = saved.FlyEnabled      == true
 local AntiFlingEnabled = saved.AntiFlingEnabled == true
 local InfiniteZoomEnabled = saved.InfiniteZoomEnabled == true
+local InfiniteJumpEnabled = saved.InfiniteJumpEnabled == true
+local AimAssistEnabled = saved.AimAssistEnabled == true
+local AimAssistTarget = saved.AimAssistTarget or "Head"
+local AimAssistRoleFilter = saved.AimAssistRoleFilter or "All"
+local AimAssistOnlyWithGun = saved.AimAssistOnlyWithGun == true
 
 -- CHARACTER & MISC STATS
 local PlayerSpeed = saved.PlayerSpeed or 16
@@ -92,8 +97,12 @@ local function SaveAllSettings()
 		NoclipEnabled    = NoclipEnabled,
 		FlyEnabled       = FlyEnabled,
 		AntiFlingEnabled = AntiFlingEnabled,
-
 		InfiniteZoomEnabled = InfiniteZoomEnabled,
+		InfiniteJumpEnabled = InfiniteJumpEnabled,
+		AimAssistEnabled = AimAssistEnabled,
+		AimAssistTarget  = AimAssistTarget,
+		AimAssistRoleFilter = AimAssistRoleFilter,
+		AimAssistOnlyWithGun = AimAssistOnlyWithGun,
 		PlayerSpeed      = PlayerSpeed,
 		PlayerJump       = PlayerJump,
 		FlySpeed         = FlySpeed,
@@ -199,6 +208,17 @@ local function ApplyCharacterStats()
 		hum.JumpPower = PlayerJump
 	end
 end
+
+-- INFINITE JUMP MOTOR
+TrackConn(UIS.JumpRequest:Connect(function()
+	if InfiniteJumpEnabled and Active then
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+end))
 
 -- FOV APPLICATION
 local function ApplyFOV()
@@ -494,6 +514,17 @@ local function GetRoleColor(char)
 	return Color3.fromHSV(InnocentHue / 360, 1, 1)
 end
 
+local function GetPlayerRole(player)
+	if not player or not player.Character then return "Innocent" end
+	local cached = ResolveRoleFromCache(player.Character)
+	if cached then return cached end
+	local mPlr, _ = GetMurdererV1()
+	local sPlr, _ = GetSheriffV1()
+	if player == mPlr then return "Murderer" end
+	if player == sPlr then return "Sheriff" end
+	return "Innocent"
+end
+
 -- CHAMS
 local function ApplyChams(char, color)
 	if not char then return end
@@ -513,6 +544,17 @@ local function ApplyChams(char, color)
 	h.Parent              = char
 end
 
+-- SMOOTH ESP UPDATER FUNCTION
+local function UpdateAllPlayerChams()
+	if not ChamsESPEnabled then return end
+	for _, player in pairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			local color = GetRoleColor(player.Character)
+			ApplyChams(player.Character, color)
+		end
+	end
+end
+
 -- GUN ESP
 local function CreateGunESP(gun)
 	if not GunESPEnabled then return end
@@ -528,7 +570,7 @@ local function CreateGunESP(gun)
 	billboard.Size        = UDim2.new(0, 120, 0, 20)
 	billboard.StudsOffset = Vector3.new(0, 2, 0)
 	billboard.AlwaysOnTop = true
-	billboard.Enabled     = GunTextESPEnabled -- TEXT ESP TOGGLE
+	billboard.Enabled     = GunTextESPEnabled
 	local text = Instance.new("TextLabel", billboard)
 	text.Size                   = UDim2.new(1, 0, 1, 0)
 	text.BackgroundTransparency = 1
@@ -545,7 +587,7 @@ local function UpdateAllGunObjects()
 			v.FillColor = Color3.fromHSV(GunHue / 360, 1, 1)
 			v.FillTransparency = GunEspFillTransparency / 100
 		elseif v.Name == "GunESP" and v:IsA("BillboardGui") then
-			v.Enabled = GunTextESPEnabled -- UPDATE TEXT ESP TOGGLE
+			v.Enabled = GunTextESPEnabled
 		end
 	end
 end
@@ -597,6 +639,66 @@ local function SpectatePlayer(targetPlayer, buttonInstance)
 	end)
 	TrackConn(spectateConn)
 end
+
+-- AIM ASSIST LOGIC
+local function GetClosestPlayer()
+	local closestPlayer = nil
+	local shortestDistance = math.huge
+	local localChar = LocalPlayer.Character
+	local localHRP = localChar and localChar:FindFirstChild("HumanoidRootPart")
+	if not localHRP then return nil end
+	
+	-- Verify if local player is armed
+	local localHasGun = false
+	if localChar and localChar:FindFirstChild("Gun") then localHasGun = true end
+	if LocalPlayer:FindFirstChild("Backpack") and LocalPlayer.Backpack:FindFirstChild("Gun") then localHasGun = true end
+
+	-- Abort aim assist completely if toggle is on and we don't have the gun
+	if AimAssistOnlyWithGun and not localHasGun then
+		return nil
+	end
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+			local hum = player.Character:FindFirstChildOfClass("Humanoid")
+			if hrp and hum and hum.Health > 0 then
+				local role = GetPlayerRole(player)
+				
+				if AimAssistOnlyWithGun then
+					if role ~= "Murderer" then continue end
+				else
+					if AimAssistRoleFilter == "Murd/Sheriff" and role == "Innocent" then
+						continue
+					elseif AimAssistRoleFilter == "Murderer" and role ~= "Murderer" then
+						continue
+					elseif AimAssistRoleFilter == "Sheriff" and role ~= "Sheriff" then
+						continue
+					end
+				end
+
+				local distance = (hrp.Position - localHRP.Position).Magnitude
+				if distance < shortestDistance then
+					shortestDistance = distance
+					closestPlayer = player
+				end
+			end
+		end
+	end
+	return closestPlayer
+end
+
+TrackConn(RunService.RenderStepped:Connect(function()
+	if not AimAssistEnabled or not Active then return end
+	local targetPlayer = GetClosestPlayer()
+	if targetPlayer and targetPlayer.Character then
+		local partName = AimAssistTarget == "Torso" and "HumanoidRootPart" or "Head"
+		local targetPart = targetPlayer.Character:FindFirstChild(partName)
+		if targetPart then
+			Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+		end
+	end
+end))
 
 -- ============================================================
 -- MAIN WINDOW
@@ -722,20 +824,20 @@ local sideLayout = Instance.new("UIListLayout", topButtons)
 sideLayout.FillDirection       = Enum.FillDirection.Vertical
 sideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 sideLayout.SortOrder           = Enum.SortOrder.LayoutOrder
-sideLayout.Padding             = UDim.new(0, 8)
+sideLayout.Padding             = UDim.new(0, 4)
 
 local sidePadding = Instance.new("UIPadding", topButtons)
-sidePadding.PaddingTop = UDim.new(0, 12)
+sidePadding.PaddingTop = UDim.new(0, 8)
 
 local function SideButton(text, active, parent)
 	local btn = Instance.new("TextButton", parent)
-	btn.Size             = UDim2.new(0, 54, 0, 34)
+	btn.Size             = UDim2.new(0, 56, 0, 28)
 	btn.BackgroundColor3 = active and Color3.fromRGB(40, 40, 44) or Color3.fromRGB(28, 28, 30)
 	btn.TextColor3       = active and Color3.fromRGB(230, 230, 240) or Color3.fromRGB(150, 150, 160)
 	btn.Font             = Enum.Font.GothamBold
-	btn.TextSize         = 11
+	btn.TextSize         = 10
 	btn.Text             = text
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 	local stroke = Instance.new("UIStroke", btn)
 	stroke.Color           = Color3.fromRGB(0, 204, 100)
 	stroke.Thickness       = 1.5
@@ -744,10 +846,11 @@ local function SideButton(text, active, parent)
 	return btn
 end
 
-local espBtn      = SideButton("ESP",  true,  topButtons)
-local teleportBtn = SideButton("TP",   false, topButtons)
-local charBtn     = SideButton("Char", false, topButtons)
-local miscBtn     = SideButton("Misc", false, topButtons)
+local espBtn      = SideButton("ESP",    true,  topButtons)
+local combatBtn   = SideButton("Combat", false, topButtons)
+local teleportBtn = SideButton("TP",     false, topButtons)
+local charBtn     = SideButton("Char",   false, topButtons)
+local miscBtn     = SideButton("Misc",   false, topButtons)
 
 local settingsBtn = Instance.new("TextButton", sidebar)
 settingsBtn.Size             = UDim2.new(0, 54, 0, 34)
@@ -805,6 +908,7 @@ local function MakePage(isScrolling)
 end
 
 local espPage      = MakePage(true)
+local combatPage   = MakePage(true)
 local teleportPage = MakePage(true)
 local charPage     = MakePage(true)
 local settingsPage = MakePage(false)
@@ -1098,27 +1202,31 @@ end
 -- ESP PAGE
 CreateRow(espPage, "Chams ESP", "Highlight all players", ChamsESPEnabled, function(v)
 	ChamsESPEnabled = v
-	if not v then RemoveChamsESP() end
+	if not v then RemoveChamsESP() else UpdateAllPlayerChams() end
 	SaveAllSettings()
 end)
 
 CreateRow(espPage, "Role Detection", "Color murderer and sheriff", RoleESPEnabled, function(v)
 	RoleESPEnabled = v
+	UpdateAllPlayerChams()
 	SaveAllSettings()
 end)
 
 local murdererColorSlider = CreateSliderRow(espPage, "Murderer Color (Hue)", "Change Murderer ESP color scale", 0, 360, MurdererHue, function(v)
 	MurdererHue = v
+	UpdateAllPlayerChams()
 	SaveAllSettings()
 end, true)
 
 local sheriffColorSlider = CreateSliderRow(espPage, "Sheriff Color (Hue)", "Change Sheriff ESP color scale", 0, 360, SheriffHue, function(v)
 	SheriffHue = v
+	UpdateAllPlayerChams()
 	SaveAllSettings()
 end, true)
 
 local innocentColorSlider = CreateSliderRow(espPage, "Innocent Color (Hue)", "Change Innocent ESP color scale", 0, 360, InnocentHue, function(v)
 	InnocentHue = v
+	UpdateAllPlayerChams()
 	SaveAllSettings()
 end, true)
 
@@ -1130,6 +1238,7 @@ end, true)
 
 local espTransSlider = CreateSliderRow(espPage, "Main ESP Transparency", "Set player highlight fill transparency", 0, 100, EspFillTransparency, function(v)
 	EspFillTransparency = v
+	UpdateAllPlayerChams()
 	SaveAllSettings()
 end)
 
@@ -1152,6 +1261,7 @@ CreateActionRow(espPage, "Reset Colors", "Revert ESP profiles back to configurat
 	gunColorSlider.UpdateExternal(180)
 	espTransSlider.UpdateExternal(100)
 	gunTransSlider.UpdateExternal(70)
+	UpdateAllPlayerChams()
 	UpdateAllGunObjects()
 	SaveAllSettings()
 end)
@@ -1162,7 +1272,6 @@ CreateRow(espPage, "Gun ESP", "Highlight dropped gun", GunESPEnabled, function(v
 	SaveAllSettings()
 end)
 
--- *** NEW TOGGLE: GUN TEXT ESP ***
 CreateRow(espPage, "Gun Text ESP", "Show 🔫 DROP text on the gun", GunTextESPEnabled, function(v)
 	GunTextESPEnabled = v
 	UpdateAllGunObjects()
@@ -1207,6 +1316,46 @@ CreateActionRow(espPage, "View Sheriff", "Spectate sheriff role toggle", "Specta
 		btnInstance.Text = "Not Found"
 		task.delay(1.5, function() btnInstance.Text = "Spectate" end)
 	end
+end)
+
+-- ============================================================
+-- COMBAT PAGE
+-- ============================================================
+CreateRow(combatPage, "Aim Assist", "Smoothly locks camera orientation on nearest targets", AimAssistEnabled, function(v)
+	AimAssistEnabled = v
+	SaveAllSettings()
+end)
+
+CreateRow(combatPage, "Lock Murderer (Need Gun)", "Only aim at Murderer if you have a gun", AimAssistOnlyWithGun, function(v)
+	AimAssistOnlyWithGun = v
+	SaveAllSettings()
+end)
+
+local targetTrackButton
+targetTrackButton = CreateActionRow(combatPage, "Aim Target Tracking", "Toggle viewport snap positions", "Target: " .. AimAssistTarget, function()
+	if AimAssistTarget == "Head" then
+		AimAssistTarget = "Torso"
+	else
+		AimAssistTarget = "Head"
+	end
+	targetTrackButton.Text = "Target: " .. AimAssistTarget
+	SaveAllSettings()
+end)
+
+-- ADDED ROLE FILTER TOGGLE
+local roleTrackButton
+roleTrackButton = CreateActionRow(combatPage, "Aim Role Filter", "Limit aim assist to specific roles", "Filter: " .. AimAssistRoleFilter, function()
+	if AimAssistRoleFilter == "All" then
+		AimAssistRoleFilter = "Murd/Sheriff"
+	elseif AimAssistRoleFilter == "Murd/Sheriff" then
+		AimAssistRoleFilter = "Murderer"
+	elseif AimAssistRoleFilter == "Murderer" then
+		AimAssistRoleFilter = "Sheriff"
+	else
+		AimAssistRoleFilter = "All"
+	end
+	roleTrackButton.Text = "Filter: " .. AimAssistRoleFilter
+	SaveAllSettings()
 end)
 
 -- ============================================================
@@ -1275,6 +1424,11 @@ CreateRow(charPage, "Anti Fling", "Disables character-to-character collision che
 	SaveAllSettings()
 end)
 
+CreateRow(charPage, "Infinite Jump", "Allows you to jump endlessly in mid-air", InfiniteJumpEnabled, function(v)
+	InfiniteJumpEnabled = v
+	SaveAllSettings()
+end)
+
 CreateRow(charPage, "Noclip", "Walk straight through solid objects and walls", NoclipEnabled, function(v)
 	ToggleNoclip(v)
 end)
@@ -1305,14 +1459,12 @@ CreateSliderRow(charPage, "Spin Speed", "Spins your player character around (0 =
 	SaveAllSettings()
 end)
 
--- FOV SLIDER
 CreateSliderRow(charPage, "FOV", "Field of view (default 70)", 30, 120, PlayerFOV, function(v)
 	PlayerFOV = v
 	ApplyFOV()
 	SaveAllSettings()
 end)
 
--- INFINITE ZOOM
 CreateRow(charPage, "Infinite Zoom", "Zoom camera out to any distance", InfiniteZoomEnabled, function(v)
 	InfiniteZoomEnabled = v
 	if InfiniteZoomEnabled then EnableInfiniteZoom() else DisableInfiniteZoom() end
@@ -1333,6 +1485,7 @@ CreateActionRow(charPage, "Reset Stats", "Restore default character behavior pro
 	FlySpeed    = 50
 	PlayerFOV   = 70
 	PlayerSpinSpeed = 0
+	InfiniteJumpEnabled = false
 	ApplyCharacterStats()
 	ApplyFOV()
 	SaveAllSettings()
@@ -1356,7 +1509,6 @@ CreateSliderRow(miscPage, "FPS Cap Override", "Adjust max hardware rendering rat
 	SaveAllSettings()
 end)
 
--- CUSTOM CURSOR CONFIGURATION ROWS
 local cursorRow = Instance.new("Frame", miscPage)
 cursorRow.Size             = UDim2.new(1, 0, 0, 48)
 cursorRow.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
@@ -1448,12 +1600,13 @@ end)
 -- ============================================================
 local function SetPage(name)
 	espPage.Visible      = false
+	combatPage.Visible   = false
 	teleportPage.Visible = false
 	charPage.Visible     = false
 	settingsPage.Visible = false
 	miscPage.Visible     = false
 
-	for _, btn in pairs({espBtn, teleportBtn, charBtn, miscBtn, settingsBtn}) do
+	for _, btn in pairs({espBtn, combatBtn, teleportBtn, charBtn, miscBtn, settingsBtn}) do
 		btn.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
 		btn.TextColor3       = Color3.fromRGB(150, 150, 160)
 		local stroke = btn:FindFirstChildOfClass("UIStroke")
@@ -1466,6 +1619,12 @@ local function SetPage(name)
 		espBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
 		espBtn.TextColor3       = Color3.fromRGB(230, 230, 240)
 		espBtn:FindFirstChildOfClass("UIStroke").Enabled = true
+	elseif name == "Combat" then
+		sectionTitle.Text = "Combat"
+		combatPage.Visible = true
+		combatBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
+		combatBtn.TextColor3       = Color3.fromRGB(230, 230, 240)
+		combatBtn:FindFirstChildOfClass("UIStroke").Enabled = true
 	elseif name == "Teleport" then
 		sectionTitle.Text     = "Teleport"
 		teleportPage.Visible  = true
@@ -1494,6 +1653,7 @@ local function SetPage(name)
 end
 
 MobileConnect(espBtn,      function() SetPage("ESP")       end)
+MobileConnect(combatBtn,   function() SetPage("Combat")    end)
 MobileConnect(teleportBtn, function() SetPage("Teleport")  end)
 MobileConnect(charBtn,     function() SetPage("Character") end)
 MobileConnect(settingsBtn, function() SetPage("Settings")  end)
@@ -1552,12 +1712,7 @@ task.spawn(function()
 	while task.wait(0.4) do
 		if not Active then break end
 		if not ChamsESPEnabled then continue end
-		for _, player in pairs(Players:GetPlayers()) do
-			if player ~= LocalPlayer and player.Character then
-				local color = GetRoleColor(player.Character)
-				ApplyChams(player.Character, color)
-			end
-		end
+		UpdateAllPlayerChams()
 	end
 end)
 
