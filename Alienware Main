@@ -298,17 +298,71 @@ local function ToggleNoclip(state)
 	SaveAllSettings()
 end
 
--- ANTI FLING PHYSICS ENFORCEMENT (Optimized)
+-- ANTI FLING PHYSICS ENFORCEMENT (Fixed)
+local trackedPlayers = {}
+
+local function BuildCache(player)
+    if player == LocalPlayer or not player.Character then return end
+    
+    local parts = {}
+    for _, part in ipairs(player.Character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            parts[#parts + 1] = part
+        end
+    end
+    trackedPlayers[player] = parts
+
+    TrackConn(player.Character.DescendantAdded:Connect(function(part)
+        if part:IsA("BasePart") then
+            local cache = trackedPlayers[player]
+            if cache then
+                cache[#cache + 1] = part
+            end
+        end
+    end))
+
+    TrackConn(player.Character.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            trackedPlayers[player] = nil
+        end
+    end))
+end
+
+-- Build cache for existing players
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        BuildCache(player)
+        TrackConn(player.CharacterAdded:Connect(function()
+            task.wait() -- wait a frame for character to fully load
+            BuildCache(player)
+        end))
+    end
+end
+
+-- Build cache for new players
+TrackConn(Players.PlayerAdded:Connect(function(player)
+    TrackConn(player.CharacterAdded:Connect(function()
+        task.wait()
+        BuildCache(player)
+    end))
+end))
+
+-- Stepped loop only iterates pre-cached parts, not GetDescendants()
+local frame = 0
 TrackConn(RunService.Stepped:Connect(function()
-	if not AntiFlingEnabled or not Active then return end
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character then
-            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-            local torso = player.Character:FindFirstChild("Torso") or player.Character:FindFirstChild("UpperTorso")
-            if hrp then hrp.CanCollide = false end
-            if torso then torso.CanCollide = false end
-		end
-	end
+    if not AntiFlingEnabled or not Active then return end
+    frame += 1
+    if frame % 2 ~= 0 then return end -- runs every 2 frames, not every frame
+
+    for player, parts in pairs(trackedPlayers) do
+        if player.Character then
+            for _, part in ipairs(parts) do
+                if part.CanCollide then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end
 end))
 
 -- SPIN BOT MOTOR
