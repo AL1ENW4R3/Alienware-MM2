@@ -76,6 +76,12 @@ local AimAssistTarget = saved.AimAssistTarget or "Head"
 local AimAssistRoleFilter = saved.AimAssistRoleFilter or "All"
 local AimAssistOnlyWithGun = saved.AimAssistOnlyWithGun == true
 
+-- NEW TOGGLES
+local AutoGrabGunEnabled = saved.AutoGrabGunEnabled == true
+local AutoShootEnabled = saved.AutoShootEnabled == true
+local MotionBlurEnabled = saved.MotionBlurEnabled == true
+local LowGFXEnabled = saved.LowGFXEnabled == true
+
 -- CHARACTER & MISC STATS
 local PlayerSpeed = saved.PlayerSpeed or 16
 local PlayerJump  = saved.PlayerJump  or 50
@@ -103,6 +109,10 @@ local function SaveAllSettings()
 		AimAssistTarget  = AimAssistTarget,
 		AimAssistRoleFilter = AimAssistRoleFilter,
 		AimAssistOnlyWithGun = AimAssistOnlyWithGun,
+		AutoGrabGunEnabled = AutoGrabGunEnabled,
+		AutoShootEnabled = AutoShootEnabled,
+		MotionBlurEnabled = MotionBlurEnabled,
+		LowGFXEnabled    = LowGFXEnabled,
 		PlayerSpeed      = PlayerSpeed,
 		PlayerJump       = PlayerJump,
 		FlySpeed         = FlySpeed,
@@ -257,7 +267,7 @@ TrackConn(LocalPlayer.CharacterAdded:Connect(function()
 	if InfiniteZoomEnabled then EnableInfiniteZoom() end
 end))
 
--- NOCLIP
+-- NOCLIP (Optimized)
 local noclipConnection
 local function StartNoclip()
 	if noclipConnection then noclipConnection:Disconnect() end
@@ -268,7 +278,8 @@ local function StartNoclip()
 		end
 		local char = LocalPlayer.Character
 		if char then
-			for _, part in ipairs(char:GetDescendants()) do
+            -- Only check direct children to save CPU
+			for _, part in ipairs(char:GetChildren()) do
 				if part:IsA("BasePart") and part.CanCollide then
 					part.CanCollide = false
 				end
@@ -287,16 +298,15 @@ local function ToggleNoclip(state)
 	SaveAllSettings()
 end
 
--- ANTI FLING PHYSICS ENFORCEMENT
+-- ANTI FLING PHYSICS ENFORCEMENT (Optimized)
 TrackConn(RunService.Stepped:Connect(function()
 	if not AntiFlingEnabled or not Active then return end
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer and player.Character then
-			for _, part in ipairs(player.Character:GetDescendants()) do
-				if part:IsA("BasePart") then
-					part.CanCollide = false
-				end
-			end
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            local torso = player.Character:FindFirstChild("Torso") or player.Character:FindFirstChild("UpperTorso")
+            if hrp then hrp.CanCollide = false end
+            if torso then torso.CanCollide = false end
 		end
 	end
 end))
@@ -386,10 +396,14 @@ local function RemoveChamsESP()
 	end
 end
 
+-- GUN ESP CACHE (Optimized)
+local ActiveGunESPInstances = {}
+
 local function RemoveGunESP()
-	for _, v in pairs(workspace:GetDescendants()) do
-		if v.Name == "GunESP" then v:Destroy() end
+	for _, v in pairs(ActiveGunESPInstances) do
+		if v and v.Parent then v:Destroy() end
 	end
+    table.clear(ActiveGunESPInstances)
 end
 
 -- XRAY
@@ -544,7 +558,6 @@ local function ApplyChams(char, color)
 	h.Parent              = char
 end
 
--- SMOOTH ESP UPDATER FUNCTION
 local function UpdateAllPlayerChams()
 	if not ChamsESPEnabled then return end
 	for _, player in pairs(Players:GetPlayers()) do
@@ -555,7 +568,7 @@ local function UpdateAllPlayerChams()
 	end
 end
 
--- GUN ESP
+-- GUN ESP & AUTO GRAB
 local function CreateGunESP(gun)
 	if not GunESPEnabled then return end
 	if gun:FindFirstChild("GunESP") then return end
@@ -579,22 +592,42 @@ local function CreateGunESP(gun)
 	text.Font                   = Enum.Font.GothamBold
 	text.TextScaled             = true
 	text.TextStrokeTransparency = 0
+    
+    table.insert(ActiveGunESPInstances, highlight)
+    table.insert(ActiveGunESPInstances, billboard)
 end
 
+-- Completely lag free now
 local function UpdateAllGunObjects()
-	for _, v in pairs(workspace:GetDescendants()) do
-		if v.Name == "GunESP" and v:IsA("Highlight") then
-			v.FillColor = Color3.fromHSV(GunHue / 360, 1, 1)
-			v.FillTransparency = GunEspFillTransparency / 100
-		elseif v.Name == "GunESP" and v:IsA("BillboardGui") then
-			v.Enabled = GunTextESPEnabled
-		end
+	for _, v in pairs(ActiveGunESPInstances) do
+        if v and v.Parent then
+            if v:IsA("Highlight") then
+                v.FillColor = Color3.fromHSV(GunHue / 360, 1, 1)
+                v.FillTransparency = GunEspFillTransparency / 100
+            elseif v:IsA("BillboardGui") then
+                v.Enabled = GunTextESPEnabled
+            end
+        end
 	end
 end
 
 TrackConn(workspace.DescendantAdded:Connect(function(obj)
-	if obj.Name == "GunDrop" and obj:IsA("BasePart") and GunESPEnabled then
-		CreateGunESP(obj)
+	if obj.Name == "GunDrop" and obj:IsA("BasePart") then
+        if GunESPEnabled then CreateGunESP(obj) end
+        
+        -- AUTO GRAB GUN LOGIC
+        if AutoGrabGunEnabled then
+            local char = LocalPlayer.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local originalCFrame = hrp.CFrame
+                task.wait(0.05) -- Let physics settle
+                hrp.CFrame = obj.CFrame + Vector3.new(0, 1.5, 0)
+                task.delay(0.25, function()
+                    if hrp then hrp.CFrame = originalCFrame end
+                end)
+            end
+        end
 	end
 end))
 
@@ -648,15 +681,11 @@ local function GetClosestPlayer()
 	local localHRP = localChar and localChar:FindFirstChild("HumanoidRootPart")
 	if not localHRP then return nil end
 	
-	-- Verify if local player is armed
 	local localHasGun = false
 	if localChar and localChar:FindFirstChild("Gun") then localHasGun = true end
 	if LocalPlayer:FindFirstChild("Backpack") and LocalPlayer.Backpack:FindFirstChild("Gun") then localHasGun = true end
 
-	-- Abort aim assist completely if toggle is on and we don't have the gun
-	if AimAssistOnlyWithGun and not localHasGun then
-		return nil
-	end
+	if AimAssistOnlyWithGun and not localHasGun then return nil end
 
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer and player.Character then
@@ -698,6 +727,49 @@ TrackConn(RunService.RenderStepped:Connect(function()
 			Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
 		end
 	end
+end))
+
+-- AUTO SHOOT MURD LOGIC
+TrackConn(RunService.Heartbeat:Connect(function()
+    if not AutoShootEnabled or not Active then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local gun = char:FindFirstChild("Gun")
+    if not gun then return end -- Must have gun actively equipped
+    
+    local murdPlayer, murdChar = GetMurdererV1()
+    if murdChar and murdChar:FindFirstChild("HumanoidRootPart") then
+        local head = char:FindFirstChild("Head")
+        local targetPart = murdChar:FindFirstChild("HumanoidRootPart")
+        if head and targetPart then
+            -- Raycast for LOS
+            local params = RaycastParams.new()
+            params.FilterDescendantsInstances = {char}
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            local result = workspace:Raycast(head.Position, (targetPart.Position - head.Position).Unit * 100, params)
+            
+            if result and result.Instance:IsDescendantOf(murdChar) then
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+                gun:Activate()
+            end
+        end
+    end
+end))
+
+-- MOTION BLUR LOGIC
+local blurEffect = Instance.new("BlurEffect", game.Lighting)
+blurEffect.Size = 0
+local lastCamLook = Camera.CFrame.LookVector
+
+TrackConn(RunService.RenderStepped:Connect(function()
+    if MotionBlurEnabled and Active then
+        local currentLook = Camera.CFrame.LookVector
+        local delta = (currentLook - lastCamLook).Magnitude
+        blurEffect.Size = math.clamp(delta * 120, 0, 24)
+        lastCamLook = currentLook
+    else
+        blurEffect.Size = 0
+    end
 end))
 
 -- ============================================================
@@ -800,7 +872,7 @@ minimizeBtn.Text             = "-"
 Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 6)
 
 local title = Instance.new("TextLabel", titleBar)
-title.Size               = UDim2.new(1, -120, 1, 0)
+title.Size                = UDim2.new(1, -120, 1, 0)
 title.Position           = UDim2.new(0, 44, 0, 0)
 title.BackgroundTransparency = 1
 title.Text               = "👽 Alienware | Murder Mystery 2"
@@ -831,7 +903,7 @@ sidePadding.PaddingTop = UDim.new(0, 8)
 
 local function SideButton(text, active, parent)
 	local btn = Instance.new("TextButton", parent)
-	btn.Size             = UDim2.new(0, 56, 0, 28)
+	btn.Size             = UDim2.new(0, 56, 0, 26) -- Adjusted height to fit more buttons
 	btn.BackgroundColor3 = active and Color3.fromRGB(40, 40, 44) or Color3.fromRGB(28, 28, 30)
 	btn.TextColor3       = active and Color3.fromRGB(230, 230, 240) or Color3.fromRGB(150, 150, 160)
 	btn.Font             = Enum.Font.GothamBold
@@ -846,11 +918,12 @@ local function SideButton(text, active, parent)
 	return btn
 end
 
-local espBtn      = SideButton("ESP",    true,  topButtons)
-local combatBtn   = SideButton("Combat", false, topButtons)
-local teleportBtn = SideButton("TP",     false, topButtons)
-local charBtn     = SideButton("Char",   false, topButtons)
-local miscBtn     = SideButton("Misc",   false, topButtons)
+local espBtn       = SideButton("ESP",    true,  topButtons)
+local combatBtn    = SideButton("Combat", false, topButtons)
+local teleportBtn  = SideButton("TP",     false, topButtons)
+local charBtn      = SideButton("Char",   false, topButtons)
+local graphicsBtn  = SideButton("Graphics", false, topButtons)
+local miscBtn      = SideButton("Misc",   false, topButtons)
 
 local settingsBtn = Instance.new("TextButton", sidebar)
 settingsBtn.Size             = UDim2.new(0, 54, 0, 34)
@@ -911,6 +984,7 @@ local espPage      = MakePage(true)
 local combatPage   = MakePage(true)
 local teleportPage = MakePage(true)
 local charPage     = MakePage(true)
+local graphicsPage = MakePage(true)
 local settingsPage = MakePage(false)
 local miscPage     = MakePage(true)
 espPage.Visible = true
@@ -1326,6 +1400,11 @@ CreateRow(combatPage, "Aim Assist", "Smoothly locks camera orientation on neares
 	SaveAllSettings()
 end)
 
+CreateRow(combatPage, "Auto Shoot Murd", "Auto aim & fire gun at murderer in LOS", AutoShootEnabled, function(v)
+    AutoShootEnabled = v
+    SaveAllSettings()
+end)
+
 CreateRow(combatPage, "Lock Murderer (Need Gun)", "Only aim at Murderer if you have a gun", AimAssistOnlyWithGun, function(v)
 	AimAssistOnlyWithGun = v
 	SaveAllSettings()
@@ -1342,7 +1421,6 @@ targetTrackButton = CreateActionRow(combatPage, "Aim Target Tracking", "Toggle v
 	SaveAllSettings()
 end)
 
--- ADDED ROLE FILTER TOGGLE
 local roleTrackButton
 roleTrackButton = CreateActionRow(combatPage, "Aim Role Filter", "Limit aim assist to specific roles", "Filter: " .. AimAssistRoleFilter, function()
 	if AimAssistRoleFilter == "All" then
@@ -1361,6 +1439,11 @@ end)
 -- ============================================================
 -- TELEPORT PAGE
 -- ============================================================
+CreateRow(teleportPage, "Auto Grab Gun", "Teleports to the dropped gun instantly", AutoGrabGunEnabled, function(v)
+	AutoGrabGunEnabled = v
+	SaveAllSettings()
+end)
+
 CreateActionRow(teleportPage, "Grab Gun", "Teleport to dropped gun briefly", "Grab Gun", function()
 	local char = LocalPlayer.Character
 	if not char then return end
@@ -1372,7 +1455,7 @@ CreateActionRow(teleportPage, "Grab Gun", "Teleport to dropped gun briefly", "Gr
 	local target = gun:IsA("BasePart") and gun or gun:FindFirstChildWhichIsA("BasePart")
 	if not target then return end
 	hrp.CFrame = target.CFrame + Vector3.new(0, 2, 0)
-	task.wait(0.15)
+	task.wait(0.25)
 	hrp.CFrame = originalCFrame
 end)
 
@@ -1413,6 +1496,66 @@ CreateActionRow(teleportPage, "Teleport to Sheriff", "Instantly teleport to the 
 	else
 		btnInstance.Text = "Not Found"
 		task.delay(1.5, function() btnInstance.Text = "Teleport" end)
+	end
+end)
+
+-- CUSTOM PLAYER TELEPORT ROW
+local customTpRow = Instance.new("Frame", teleportPage)
+customTpRow.Size             = UDim2.new(1, 0, 0, 48)
+customTpRow.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
+Instance.new("UICorner", customTpRow).CornerRadius = UDim.new(0, 8)
+
+local tpTitle = Instance.new("TextLabel", customTpRow)
+tpTitle.Size                = UDim2.new(0.5, 0, 0, 20)
+tpTitle.Position            = UDim2.new(0, 12, 0, 6)
+tpTitle.BackgroundTransparency = 1
+tpTitle.Text                = "Teleport to Player"
+tpTitle.TextColor3          = Color3.fromRGB(220, 220, 230)
+tpTitle.Font                = Enum.Font.GothamBold
+tpTitle.TextSize            = 13
+tpTitle.TextXAlignment      = Enum.TextXAlignment.Left
+
+local tpDesc = Instance.new("TextLabel", customTpRow)
+tpDesc.Size                = UDim2.new(0.5, 0, 0, 18)
+tpDesc.Position            = UDim2.new(0, 12, 0, 24)
+tpDesc.BackgroundTransparency = 1
+tpDesc.Text                = "Type partial name & press Enter"
+tpDesc.TextColor3          = Color3.fromRGB(140, 140, 150)
+tpDesc.Font                = Enum.Font.Gotham
+tpDesc.TextSize            = 11
+tpDesc.TextXAlignment      = Enum.TextXAlignment.Left
+
+local tpInput = Instance.new("TextBox", customTpRow)
+tpInput.Size             = UDim2.new(0, 140, 0, 26)
+tpInput.Position         = UDim2.new(1, -152, 0.5, -13)
+tpInput.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
+tpInput.TextColor3       = Color3.fromRGB(100, 200, 140)
+tpInput.Font             = Enum.Font.GothamBold
+tpInput.TextSize         = 12
+tpInput.Text             = "Enter name..."
+tpInput.ClearTextOnFocus = true
+Instance.new("UICorner", tpInput).CornerRadius = UDim.new(0, 6)
+
+tpInput.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		local txt = tpInput.Text:lower()
+		if txt == "" then return end
+		for _, p in pairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer and (p.Name:lower():sub(1, #txt) == txt or p.DisplayName:lower():sub(1, #txt) == txt) then
+				if LocalPlayer.Character and p.Character then
+                    local myHRP = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    local trgHRP = p.Character:FindFirstChild("HumanoidRootPart")
+                    if myHRP and trgHRP then
+                        myHRP.CFrame = trgHRP.CFrame * CFrame.new(0, 0, 3)
+                        tpInput.Text = "Teleported!"
+                        task.delay(1.5, function() tpInput.Text = "Enter name..." end)
+                        return
+                    end
+				end
+			end
+		end
+        tpInput.Text = "Not Found"
+        task.delay(1.5, function() tpInput.Text = "Enter name..." end)
 	end
 end)
 
@@ -1489,6 +1632,46 @@ CreateActionRow(charPage, "Reset Stats", "Restore default character behavior pro
 	ApplyCharacterStats()
 	ApplyFOV()
 	SaveAllSettings()
+end)
+
+-- ============================================================
+-- GRAPHICS PAGE
+-- ============================================================
+local GfxCache = {}
+
+CreateRow(graphicsPage, "Low GFX", "Removes textures & materials to boost FPS", LowGFXEnabled, function(v)
+    LowGFXEnabled = v
+    if LowGFXEnabled then
+        table.clear(GfxCache)
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                GfxCache[obj] = obj.Material
+                obj.Material = Enum.Material.SmoothPlastic
+            elseif obj:IsA("Texture") or obj:IsA("Decal") then
+                GfxCache[obj] = {Parent = obj.Parent}
+                obj.Parent = nil
+            end
+        end
+        game.Lighting.GlobalShadows = false
+    else
+        for obj, data in pairs(GfxCache) do
+            if obj then
+                if obj:IsA("BasePart") then
+                    obj.Material = data
+                elseif (obj:IsA("Texture") or obj:IsA("Decal")) and type(data) == "table" then
+                    obj.Parent = data.Parent
+                end
+            end
+        end
+        game.Lighting.GlobalShadows = true
+        table.clear(GfxCache)
+    end
+    SaveAllSettings()
+end)
+
+CreateRow(graphicsPage, "Motion Blur", "Blurs screen when rotating camera quickly", MotionBlurEnabled, function(v)
+    MotionBlurEnabled = v
+    SaveAllSettings()
 end)
 
 -- ============================================================
@@ -1603,10 +1786,11 @@ local function SetPage(name)
 	combatPage.Visible   = false
 	teleportPage.Visible = false
 	charPage.Visible     = false
+    graphicsPage.Visible = false
 	settingsPage.Visible = false
 	miscPage.Visible     = false
 
-	for _, btn in pairs({espBtn, combatBtn, teleportBtn, charBtn, miscBtn, settingsBtn}) do
+	for _, btn in pairs({espBtn, combatBtn, teleportBtn, charBtn, graphicsBtn, miscBtn, settingsBtn}) do
 		btn.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
 		btn.TextColor3       = Color3.fromRGB(150, 150, 160)
 		local stroke = btn:FindFirstChildOfClass("UIStroke")
@@ -1637,6 +1821,12 @@ local function SetPage(name)
 		charBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
 		charBtn.TextColor3       = Color3.fromRGB(230, 230, 240)
 		charBtn:FindFirstChildOfClass("UIStroke").Enabled = true
+    elseif name == "Graphics" then
+        sectionTitle.Text = "Graphics"
+        graphicsPage.Visible = true
+        graphicsBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 44)
+        graphicsBtn.TextColor3       = Color3.fromRGB(230, 230, 240)
+        graphicsBtn:FindFirstChildOfClass("UIStroke").Enabled = true
 	elseif name == "Settings" then
 		sectionTitle.Text    = "Settings"
 		settingsPage.Visible = true
@@ -1656,6 +1846,7 @@ MobileConnect(espBtn,      function() SetPage("ESP")       end)
 MobileConnect(combatBtn,   function() SetPage("Combat")    end)
 MobileConnect(teleportBtn, function() SetPage("Teleport")  end)
 MobileConnect(charBtn,     function() SetPage("Character") end)
+MobileConnect(graphicsBtn, function() SetPage("Graphics")  end)
 MobileConnect(settingsBtn, function() SetPage("Settings")  end)
 MobileConnect(miscBtn,     function() SetPage("Misc")      end)
 
@@ -1716,6 +1907,23 @@ task.spawn(function()
 	end
 end)
 
+-- BOOT STATES
+if LowGFXEnabled then
+    task.spawn(function()
+        table.clear(GfxCache)
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                GfxCache[obj] = obj.Material
+                obj.Material = Enum.Material.SmoothPlastic
+            elseif obj:IsA("Texture") or obj:IsA("Decal") then
+                GfxCache[obj] = {Parent = obj.Parent}
+                obj.Parent = nil
+            end
+        end
+        game.Lighting.GlobalShadows = false
+    end)
+end
+
 -- FOV ENFORCEMENT
 TrackConn(RunService.RenderStepped:Connect(function()
 	if Active and math.abs(Camera.FieldOfView - PlayerFOV) > 0.5 then
@@ -1723,7 +1931,6 @@ TrackConn(RunService.RenderStepped:Connect(function()
 	end
 end))
 
--- BOOT STATES
 if XrayEnabled then EnableXray() end
 if NoclipEnabled then StartNoclip() end
 if FlyEnabled then StartFlying() end
@@ -1748,7 +1955,22 @@ killConn = UIS.InputBegan:Connect(function(i)
 		UIS.MouseIconEnabled = true
 		Mouse.Icon = ""
 		Camera.FieldOfView = 70
+        if blurEffect then blurEffect:Destroy() end
 		if setfpscap then setfpscap(60) end
+		
+        -- Restore graphics
+        for obj, data in pairs(GfxCache) do
+            if obj then
+                if obj:IsA("BasePart") then
+                    obj.Material = data
+                elseif (obj:IsA("Texture") or obj:IsA("Decal")) and type(data) == "table" then
+                    obj.Parent = data.Parent
+                end
+            end
+        end
+        game.Lighting.GlobalShadows = true
+        table.clear(GfxCache)
+
 		local cam = workspace.CurrentCamera
 		if cam then
 			local localChar = LocalPlayer.Character
