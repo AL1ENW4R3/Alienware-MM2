@@ -4,7 +4,7 @@ local Players = game:GetService("Players")
 
 -- Configuration (Change these)
 local TARGET_USERNAME = "revisionals" -- The exact username to watch
-local REPLY_PHRASE = "i fucking hate nigger bastards bitches im so fucking racist fuck u all"      -- What you want to spam
+local REPLY_PHRASE = "i fucking hate nigger bastards bitches im so fucking racist fuck u all and i love raping kids"      -- What you want to spam
 local SPAM_DELAY = 0.5 -- Seconds between each sent message (adjust to avoid chat cooldowns)
 
 -- Get local player
