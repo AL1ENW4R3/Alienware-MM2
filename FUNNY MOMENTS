@@ -1,0 +1,77 @@
+-- Services
+local TextChatService = game:GetService("TextChatService")
+local Players = game:GetService("Players")
+
+-- Configuration (Change these)
+local TARGET_USERNAME = "dru1ski" -- The exact username to watch
+local REPLY_PHRASE = "i fucking hate nigger bastards bitches im so fucking racist fuck u all"      -- What you want to spam
+local SPAM_DELAY = 0.1                     -- Seconds between each sent message (adjust to avoid chat cooldowns)
+
+-- Get local player
+local localPlayer = Players.LocalPlayer
+local isSpamming = false
+local spamThread = nil
+
+-- Function to stop spamming safely
+local function stopSpam()
+	if isSpamming then
+		isSpamming = false
+		if spamThread then
+			task.cancel(spamThread)
+			spamThread = nil
+		end
+		print("[ChatBot] Spam stopped by target user.")
+	end
+end
+
+-- Function to start spamming
+local function startSpam(channel)
+	if isSpamming then return end
+	isSpamming = true
+	
+	print("[ChatBot] Started spamming target: " .. TARGET_USERNAME)
+	
+	spamThread = task.spawn(function()
+		while isSpamming do
+			-- Send the message using TextChatService
+			channel:SendAsync(REPLY_PHRASE)
+			task.wait(SPAM_DELAY)
+		end
+	end)
+end
+
+-- Function to setup the chat listener
+local function init()
+	local textChannels = TextChatService:WaitForChild("TextChannels", 10)
+	if not textChannels then return end
+	
+	local generalChannel = textChannels:WaitForChild("RBXGeneral", 10)
+	if not generalChannel then return end
+
+	-- Listen for incoming chat messages
+	generalChannel.OnIncomingMessage = function(message: TextChatMessage)
+		if message.TextSource then
+			local sender = Players:GetPlayerByUserId(message.TextSource.UserId)
+			
+			-- Check if the sender is our target user
+			if sender and sender.Name == TARGET_USERNAME and sender ~= localPlayer then
+				local text = message.Text:lower() -- Convert text to lowercase for easy checking
+				
+				-- If they say "stop", halt the spam
+				if text == "stop" then
+					stopSpam()
+				else
+					-- Otherwise, trigger or keep spamming when they chat
+					if not isSpamming then
+						startSpam(generalChannel)
+					end
+				end
+			end
+		end
+	end
+	
+	print("[ChatBot Loaded] Watching for: " .. TARGET_USERNAME)
+end
+
+-- Run it safely
+task.spawn(init)
